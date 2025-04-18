@@ -469,7 +469,7 @@ function clearLog() {
     addLogEntry('Log cleared.');
 }
 
-// Send a command to the Arduino with chunking support
+// Improved version of sendCommand for better chunking
 async function sendCommand(command) {
     if (!isConnected || !txCharacteristic) {
         addLogEntry('Not connected to device', true);
@@ -479,46 +479,49 @@ async function sendCommand(command) {
     try {
         const encoder = new TextEncoder();
         
-        // Check if command is too large for a single BLE packet (20 bytes max)
+        // If command fits in a single packet, send it directly
         if (command.length <= 20) {
-            // Can send in one packet
             await txCharacteristic.writeValue(encoder.encode(command));
             addLogEntry(`Command sent: ${command}`);
-        } else {
-            // Need to split into chunks for longer commands (especially SET_CONFIG)
-            addLogEntry(`Sending command in chunks: ${command.substring(0, 20)}...`);
+            return true;
+        }
+        
+        // For SET_CONFIG, use our improved chunking protocol
+        if (command.startsWith("SET_CONFIG:")) {
+            const jsonData = command.substring(11); // Extract the JSON part
             
-            // For SET_CONFIG commands, we'll use a special format
-            if (command.startsWith("SET_CONFIG:")) {
-                const prefix = "SC:"; // Shorter prefix to save space
-                const jsonData = command.substring(11); // Extract the JSON part
+            // 1. Send start marker
+            await txCharacteristic.writeValue(encoder.encode("CFG:START"));
+            await new Promise(resolve => setTimeout(resolve, 100));
+            addLogEntry("Starting configuration transmission...");
+            
+            // 2. Send data in chunks with improved format
+            const chunkSize = 16; // Keep chunks small to avoid corruption
+            const chunks = Math.ceil(jsonData.length / chunkSize);
+            
+            for (let i = 0; i < chunks; i++) {
+                const chunk = jsonData.substring(i * chunkSize, (i + 1) * chunkSize);
+                // Format: CFG:chunkNumber:chunkSize:data
+                const chunkMsg = `CFG:${i}:${chunk.length}:${chunk}`;
                 
-                // Send start marker with length
-                await txCharacteristic.writeValue(encoder.encode(`${prefix}START:${jsonData.length}`));
-                await new Promise(resolve => setTimeout(resolve, 50));
-                
-                // Send data in chunks
-                const chunkSize = 18; // Leave room for index markers
-                const chunks = Math.ceil(jsonData.length / chunkSize);
-                
-                for (let i = 0; i < chunks; i++) {
-                    const chunk = jsonData.substring(i * chunkSize, (i + 1) * chunkSize);
-                    const chunkMsg = `${prefix}${i}:${chunk}`;
-                    await txCharacteristic.writeValue(encoder.encode(chunkMsg));
-                    await new Promise(resolve => setTimeout(resolve, 50));
-                }
-                
-                // Send end marker
-                await txCharacteristic.writeValue(encoder.encode(`${prefix}END`));
-                addLogEntry(`Sent configuration data in ${chunks} chunks`);
-            } else {
-                // For other commands that might be long
-                for (let i = 0; i < command.length; i += 20) {
-                    const chunk = command.substring(i, i + 20);
-                    await txCharacteristic.writeValue(encoder.encode(chunk));
-                    await new Promise(resolve => setTimeout(resolve, 20));
-                }
+                addLogEntry(`Sending chunk #${i}: ${chunk}`);
+                await txCharacteristic.writeValue(encoder.encode(chunkMsg));
+                await new Promise(resolve => setTimeout(resolve, 150)); // Longer delay between chunks
             }
+            
+            // 3. Send end marker
+            await new Promise(resolve => setTimeout(resolve, 200)); // Longer delay before END
+            await txCharacteristic.writeValue(encoder.encode("CFG:END"));
+            addLogEntry(`Completed sending configuration in ${chunks} chunks`);
+            return true;
+        }
+        
+        // For other long commands, use simple chunking
+        addLogEntry(`Sending long command in pieces: ${command.substring(0, 20)}...`);
+        for (let i = 0; i < command.length; i += 20) {
+            const chunk = command.substring(i, i + 20);
+            await txCharacteristic.writeValue(encoder.encode(chunk));
+            await new Promise(resolve => setTimeout(resolve, 50));
         }
         return true;
     } catch (error) {
@@ -558,57 +561,54 @@ async function getConfiguration() {
     }
 }
 
-// Save configuration to the device
+// Updated saveConfiguration function
 async function saveConfiguration() {
-    if (!isConnected || !txCharacteristic) {
+    if (!isConnected) {
         addLogEntry('Not connected to device - cannot save configuration', true);
         return;
     }
 
-    addLogEntry('Preparing to send configuration to device...');
-    
-    // Gather configuration values
-    const config = {
-        SEA_LEVEL_PRESSURE: parseFloat(document.getElementById('seaLevelPressure').value),
-        MOVEMENT_THRESHOLD: parseFloat(document.getElementById('movementThreshold').value) / 100, // Convert from cm to m
-        IMU_ACCEL_THRESHOLD: parseFloat(document.getElementById('accelThreshold').value),
-        SOUNDER_TYPE: parseInt(document.getElementById('sounderType').value),
-        SOUNDER_BASE_FREQ: parseInt(document.getElementById('sounderFreq').value),
-        SOUNDER_DURATION: parseInt(document.getElementById('sounderDuration').value)
-    };
-    
-    // Validate values - ensure they're valid numbers
-    for (const [key, value] of Object.entries(config)) {
-        if (isNaN(value)) {
-            addLogEntry(`Error: ${key} has invalid value. Please check your inputs.`, true);
-            return;
-        }
-    }
-    
-    // Convert to JSON and send
-    const configJson = JSON.stringify(config);
-    addLogEntry(`Configuration data: ${configJson}`);
-    
     try {
-        // Disable the save button during transmission
+        // Disable buttons during configuration update
         saveConfigBtn.disabled = true;
         saveConfigBtn.textContent = "Sending...";
         
-        // Send the configuration
+        // Gather configuration values
+        const config = {
+            SEA_LEVEL_PRESSURE: parseFloat(document.getElementById('seaLevelPressure').value),
+            MOVEMENT_THRESHOLD: parseFloat(document.getElementById('movementThreshold').value) / 100, // Convert from cm to m
+            IMU_ACCEL_THRESHOLD: parseFloat(document.getElementById('accelThreshold').value),
+            SOUNDER_TYPE: parseInt(document.getElementById('sounderType').value),
+            SOUNDER_BASE_FREQ: parseInt(document.getElementById('sounderFreq').value),
+            SOUNDER_DURATION: parseInt(document.getElementById('sounderDuration').value)
+        };
+        
+        // Validate values
+        for (const [key, value] of Object.entries(config)) {
+            if (isNaN(value)) {
+                addLogEntry(`Error: ${key} has invalid value`, true);
+                return;
+            }
+        }
+        
+        // Convert to JSON and send
+        const configJson = JSON.stringify(config);
+        addLogEntry(`Sending configuration: ${configJson}`);
+        
         const command = `SET_CONFIG:${configJson}`;
         const success = await sendCommand(command);
         
         if (success) {
-            addLogEntry('Configuration sent to device.');
+            addLogEntry('Configuration successfully sent to device');
             hideConfigPanel();
             
-            // Request the current configuration to verify changes were applied
+            // Request the current configuration to verify changes
             setTimeout(async () => {
                 await sendCommand("GET_CONFIG");
                 addLogEntry('Verifying configuration changes...');
             }, 1000);
         } else {
-            addLogEntry('Failed to send configuration to device.', true);
+            addLogEntry('Failed to send configuration', true);
         }
     } catch (error) {
         addLogEntry(`Error during configuration: ${error.message}`, true);
