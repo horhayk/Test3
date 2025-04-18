@@ -1,6 +1,150 @@
-<!-- Only the sounder duration slider part needs updating - find this section in index.html -->
-<div class="config-row">
-    <label for="sounderDuration">Duration (ms):</label>
-    <input type="range" id="sounderDuration" min="50" max="5000" step="50" value="100">
-    <span id="sounderDurationValue">100 ms</span>
-</div>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Altitude Monitor</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Altitude Monitor</h1>
+        
+        <div class="connection-panel">
+            <button id="connectBtn" class="btn-primary">Connect to Device</button>
+            <div id="connectionStatus" class="status-indicator">Disconnected</div>
+        </div>
+        
+        <div class="data-panel">
+            <div class="data-card">
+                <div class="card-title">Current Altitude</div>
+                <div id="currentAltitude" class="card-value">-- m</div>
+            </div>
+            
+            <div class="data-card">
+                <div class="card-title">Elevation Change</div>
+                <div id="elevationChange" class="card-value">-- cm</div>
+            </div>
+            
+            <div class="data-card">
+                <div class="card-title">Motion</div>
+                <div id="motionStatus" class="card-value">--</div>
+            </div>
+        </div>
+
+        <div class="control-panel">
+            <button id="calibrateBtn" class="btn-action">Calibrate</button>
+            <button id="testSoundBtn" class="btn-action">Test Sound</button>
+            <button id="configBtn" class="btn-action">Configure</button>
+        </div>
+        
+        <div class="indicator-panel">
+            <div class="led-indicator">
+                <div id="ledRed" class="led led-red"></div>
+                <div class="led-label">Rising</div>
+            </div>
+            <div class="led-indicator">
+                <div id="ledGreen" class="led led-green"></div>
+                <div class="led-label">Falling</div>
+            </div>
+            <div class="led-indicator">
+                <div id="ledBlue" class="led led-blue"></div>
+                <div class="led-label">Drift</div>
+            </div>
+        </div>
+        
+        <div class="charts-container">
+            <div class="chart-box">
+                <div class="chart-title">Altitude (m)</div>
+                <div class="chart-container">
+                    <canvas id="altitudeChart"></canvas>
+                </div>
+            </div>
+            
+            <div class="chart-box">
+                <div class="chart-title">Acceleration (G)</div>
+                <div class="chart-container">
+                    <canvas id="accelChart"></canvas>
+                </div>
+            </div>
+        </div>
+        
+        <div id="configPanel" class="config-panel hidden">
+            <div class="panel-header">
+                <h3>Device Configuration</h3>
+                <button id="closeConfigBtn" class="btn-close">&times;</button>
+            </div>
+            
+            <div class="config-content">
+                <div class="config-section">
+                    <h4>Sensor Configuration</h4>
+                    
+                    <div class="config-row">
+                        <label for="seaLevelPressure">Sea Level Pressure (hPa):</label>
+                        <input type="number" id="seaLevelPressure" min="900" max="1100" step="0.01" value="1013.25">
+                    </div>
+                    
+                    <div class="config-row">
+                        <label for="movementThreshold">Movement Threshold (cm):</label>
+                        <input type="number" id="movementThreshold" min="1" max="100" step="1" value="10">
+                    </div>
+                </div>
+                
+                <div class="config-section">
+                    <h4>Motion Detection</h4>
+                    
+                    <div class="config-row">
+                        <label for="accelThreshold">Acceleration Threshold (G):</label>
+                        <input type="number" id="accelThreshold" min="0.01" max="1" step="0.01" value="0.15">
+                    </div>
+                </div>
+                
+                <div class="config-section">
+                    <h4>Sound Settings</h4>
+                    
+                    <div class="config-row">
+                        <label for="sounderType">Sound Type:</label>
+                        <select id="sounderType">
+                            <option value="0">Simple Beep</option>
+                            <option value="1">Double Beep</option>
+                            <option value="2" selected>Fast Warble</option>
+                            <option value="3">Slow Warble</option>
+                            <option value="4">Chirp</option>
+                        </select>
+                    </div>
+                    
+                    <div class="config-row">
+                        <label for="sounderFreq">Base Frequency (Hz):</label>
+                        <input type="range" id="sounderFreq" min="200" max="2000" step="50" value="800">
+                        <span id="sounderFreqValue">800 Hz</span>
+                    </div>
+                    
+                    <div class="config-row">
+                        <label for="sounderDuration">Duration (ms):</label>
+                        <input type="range" id="sounderDuration" min="50" max="5000" step="50" value="100">
+                        <span id="sounderDurationValue">100 ms</span>
+                    </div>
+                </div>
+                
+                <button id="saveConfigBtn" class="btn-primary">Save Configuration</button>
+                <button id="getConfigBtn" class="btn-secondary">Get Current Settings</button>
+            </div>
+        </div>
+        
+        <div class="log-panel">
+            <div class="panel-header">
+                <h3>Device Log</h3>
+                <button id="clearLogBtn" class="btn-secondary">Clear</button>
+            </div>
+            <div id="logContainer" class="log-container"></div>
+        </div>
+        
+        <div class="footer">
+            <p>Updated: 2025-04-18 00:27:46 • User: horhayk</p>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

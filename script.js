@@ -73,6 +73,11 @@ function initialize() {
     // Initialize the charts
     initCharts();
     
+    // Disable buttons until connected
+    calibrateBtn.disabled = true;
+    testSoundBtn.disabled = true;
+    configBtn.disabled = true;
+    
     addLogEntry('Page loaded. Ready to connect.');
 }
 
@@ -464,8 +469,8 @@ function clearLog() {
     addLogEntry('Log cleared.');
 }
 
-// Send a command to the Arduino - UPDATED with chunk support
-function sendCommand(command) {
+// Send a command to the Arduino with chunking support
+async function sendCommand(command) {
     if (!isConnected || !txCharacteristic) {
         addLogEntry('Not connected to device', true);
         return false;
@@ -477,7 +482,7 @@ function sendCommand(command) {
         // Check if command is too large for a single BLE packet (20 bytes max)
         if (command.length <= 20) {
             // Can send in one packet
-            txCharacteristic.writeValue(encoder.encode(command));
+            await txCharacteristic.writeValue(encoder.encode(command));
             addLogEntry(`Command sent: ${command}`);
         } else {
             // Need to split into chunks for longer commands (especially SET_CONFIG)
@@ -489,8 +494,8 @@ function sendCommand(command) {
                 const jsonData = command.substring(11); // Extract the JSON part
                 
                 // Send start marker with length
-                txCharacteristic.writeValue(encoder.encode(`${prefix}START:${jsonData.length}`));
-                delay(50);
+                await txCharacteristic.writeValue(encoder.encode(`${prefix}START:${jsonData.length}`));
+                await new Promise(resolve => setTimeout(resolve, 50));
                 
                 // Send data in chunks
                 const chunkSize = 18; // Leave room for index markers
@@ -499,19 +504,19 @@ function sendCommand(command) {
                 for (let i = 0; i < chunks; i++) {
                     const chunk = jsonData.substring(i * chunkSize, (i + 1) * chunkSize);
                     const chunkMsg = `${prefix}${i}:${chunk}`;
-                    txCharacteristic.writeValue(encoder.encode(chunkMsg));
-                    delay(50); // Add delay between chunks
+                    await txCharacteristic.writeValue(encoder.encode(chunkMsg));
+                    await new Promise(resolve => setTimeout(resolve, 50));
                 }
                 
                 // Send end marker
-                txCharacteristic.writeValue(encoder.encode(`${prefix}END`));
+                await txCharacteristic.writeValue(encoder.encode(`${prefix}END`));
                 addLogEntry(`Sent configuration data in ${chunks} chunks`);
             } else {
                 // For other commands that might be long
                 for (let i = 0; i < command.length; i += 20) {
                     const chunk = command.substring(i, i + 20);
-                    txCharacteristic.writeValue(encoder.encode(chunk));
-                    delay(20);
+                    await txCharacteristic.writeValue(encoder.encode(chunk));
+                    await new Promise(resolve => setTimeout(resolve, 20));
                 }
             }
         }
@@ -522,21 +527,16 @@ function sendCommand(command) {
     }
 }
 
-// Add this helper function for delays
-function delay(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
-
 // Calibrate the device
 async function calibrateDevice() {
-    if (sendCommand("CALIBRATE")) {
+    if (await sendCommand("CALIBRATE")) {
         addLogEntry('Calibration requested. Keep device still...');
     }
 }
 
 // Test the device sound
 async function testSound() {
-    if (sendCommand("SOUND")) {
+    if (await sendCommand("SOUND")) {
         addLogEntry('Sound test requested.');
     }
 }
@@ -553,7 +553,7 @@ function hideConfigPanel() {
 
 // Get current configuration from the device
 async function getConfiguration() {
-    if (sendCommand("GET_CONFIG")) {
+    if (await sendCommand("GET_CONFIG")) {
         addLogEntry('Requesting device configuration...');
     }
 }
@@ -574,7 +574,7 @@ async function saveConfiguration() {
     const configJson = JSON.stringify(config);
     const command = `SET_CONFIG:${configJson}`;
     
-    if (sendCommand(command)) {
+    if (await sendCommand(command)) {
         addLogEntry('Configuration sent to device.');
         hideConfigPanel();
     }

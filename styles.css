@@ -99,6 +99,11 @@ h3, h4 {
     filter: brightness(1.1);
 }
 
+.btn-action:disabled {
+    background-color: #ccc;
+    cursor: not-allowed;
+}
+
 .btn-close {
     background: none;
     border: none;
