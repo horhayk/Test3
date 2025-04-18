@@ -560,6 +560,13 @@ async function getConfiguration() {
 
 // Save configuration to the device
 async function saveConfiguration() {
+    if (!isConnected || !txCharacteristic) {
+        addLogEntry('Not connected to device - cannot save configuration', true);
+        return;
+    }
+
+    addLogEntry('Preparing to send configuration to device...');
+    
     // Gather configuration values
     const config = {
         SEA_LEVEL_PRESSURE: parseFloat(document.getElementById('seaLevelPressure').value),
@@ -570,13 +577,45 @@ async function saveConfiguration() {
         SOUNDER_DURATION: parseInt(document.getElementById('sounderDuration').value)
     };
     
+    // Validate values - ensure they're valid numbers
+    for (const [key, value] of Object.entries(config)) {
+        if (isNaN(value)) {
+            addLogEntry(`Error: ${key} has invalid value. Please check your inputs.`, true);
+            return;
+        }
+    }
+    
     // Convert to JSON and send
     const configJson = JSON.stringify(config);
-    const command = `SET_CONFIG:${configJson}`;
+    addLogEntry(`Configuration data: ${configJson}`);
     
-    if (await sendCommand(command)) {
-        addLogEntry('Configuration sent to device.');
-        hideConfigPanel();
+    try {
+        // Disable the save button during transmission
+        saveConfigBtn.disabled = true;
+        saveConfigBtn.textContent = "Sending...";
+        
+        // Send the configuration
+        const command = `SET_CONFIG:${configJson}`;
+        const success = await sendCommand(command);
+        
+        if (success) {
+            addLogEntry('Configuration sent to device.');
+            hideConfigPanel();
+            
+            // Request the current configuration to verify changes were applied
+            setTimeout(async () => {
+                await sendCommand("GET_CONFIG");
+                addLogEntry('Verifying configuration changes...');
+            }, 1000);
+        } else {
+            addLogEntry('Failed to send configuration to device.', true);
+        }
+    } catch (error) {
+        addLogEntry(`Error during configuration: ${error.message}`, true);
+    } finally {
+        // Re-enable the save button
+        saveConfigBtn.disabled = false;
+        saveConfigBtn.textContent = "Save Configuration";
     }
 }
 
